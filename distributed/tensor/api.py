@@ -96,13 +96,13 @@ class Tensor(torch.Tensor):
         # There should be no data communication unless there's replication
         # strategy, where we broadcast the replication from rank 0
         tensor_shape = list(local_tensor.size())
-        placement_strategies = placement_spec.placement_strategy
+        placement_strategies = placement_spec.strategies
         device_mesh = placement_spec.device_mesh
         assert len(placement_strategies) == 1, "only support 1-d placement now"
         for idx, strategy in enumerate(placement_strategies):
             # device_list = device_mesh.mesh[idx]
             if isinstance(strategy, Shard):
-                shard_dim = strategy.shard_dim
+                shard_dim = strategy.dim
                 # recover tensor shape on the shard dim
                 tensor_shape[shard_dim] = tensor_shape[shard_dim] * device_mesh.mesh.size(idx)
             elif isinstance(strategy, Replicate):
@@ -135,19 +135,15 @@ class Tensor(torch.Tensor):
         # sharding it's a reshard behavior.
         # TODO: handle last shard uneven with padding
         # right now we assume all local shard equal size
-        # NOTE: this call materializes the distributed tensor
-        # on all rank by doing all_gather, it will increase
-        # memory usage and potentially OOM if the global tensor
-        # is too big to fit into CPU/CUDA memory.
-        current_strategy = self.placement_spec.placement_strategy
+        current_strategy = self.placement_spec.strategies
         assert len(current_strategy) == 1, "Only support 1-d placement for now"
-        new_strategy = spec.placement_strategy
+        new_strategy = spec.strategies
         assert len(new_strategy) == 1, "Only support 1-d placement for now"
         assert self.placement_spec.device_mesh.mesh.equal(spec.device_mesh.mesh), "cross mesh comm not support yet"
         device_mesh = spec.device_mesh
         if isinstance(current_strategy[0], Shard) and isinstance(new_strategy[0], Replicate):
             # for shard, all_gather all shards and return the global tensor
-            # shard_dim = strategy.shard_dim
+            # shard_dim = strategy.dim
             # num_shards = device_mesh.size()
             global_tensor = torch.empty(
                 self.size(),
@@ -158,11 +154,11 @@ class Tensor(torch.Tensor):
             # sharded on a sequential list of devices
             device_mesh.all_gather_base(global_tensor, self._local_tensor)
             replica_tensor = Tensor.from_local(global_tensor, self.placement_spec)
-            replica_tensor._placement_spec.placement_strategy[0] = Replicate()
+            replica_tensor._placement_spec.strategies[0] = Replicate()
             return replica_tensor
         elif isinstance(current_strategy[0], _Partial) and isinstance(new_strategy[0], Replicate):
             device_mesh.all_reduce(self._local_tensor, current_strategy[0].reduce_op)
-            self._placement_spec.placement_strategy[0] = Replicate()
+            self._placement_spec.strategies[0] = Replicate()
             return self
         elif current_strategy == new_strategy:
             return self

@@ -12,7 +12,7 @@ class Placement(object):
 @dataclass
 class Shard(Placement):
     # shard placement, shard on a dim
-    shard_dim: int
+    dim: int
 
 @dataclass
 class Replicate(Placement):
@@ -27,4 +27,4 @@ class _Partial(Placement):
 @dataclass
 class PlacementSpec(object):
     device_mesh: DeviceMesh
-    placement_strategy: List[Placement]
+    strategies: List[Placement]

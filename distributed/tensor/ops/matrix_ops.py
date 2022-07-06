@@ -29,14 +29,14 @@ def sharded_addmm(types, args=(), kwargs=None):
     # only implemented combo with no comm for now
     # TODO: implement all combinations
     if isinstance(mat1_strategy, Shard) and isinstance(mat2_strategy, Replicate):
-        mat1_shard_dim = mat1_strategy.shard_dim
+        mat1_shard_dim = mat1_strategy.dim
         chunk_size = mat1.size(0) // world_size
-        assert mat1_shard_dim == 0, "shard_dim should be 0!"
+        assert mat1_shard_dim == 0, "shard dim should be 0!"
         local_res = local_input.addmm(local_mat1, local_mat2, beta=beta, alpha=alpha)
         return Tensor.from_local(local_res, mat1.placement_spec)
     elif isinstance(mat1_strategy, Replicate) and isinstance(mat2_strategy, Shard):
-        mat2_shard_dim = mat2_strategy.shard_dim
-        assert mat2_shard_dim == 1, "shard_dim should be 1!"
+        mat2_shard_dim = mat2_strategy.dim
+        assert mat2_shard_dim == 1, "shard dim should be 1!"
         chunk_size = mat1.size(1) // world_size
         local_res = local_input.addmm(local_mat1, local_mat2, beta=beta, alpha=alpha)
         return Tensor.from_local(local_res, mat2.placement_spec)

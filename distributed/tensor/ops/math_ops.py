@@ -21,11 +21,11 @@ def sharded_sum(types, args=(), kwargs=None):
     local_sum = local_input.sum()
 
     if isinstance(input_strategy, Shard) or isinstance(input_strategy, _Partial):
-        placement_spec = PlacementSpec(device_mesh, placement_strategy=[_Partial(ReduceOp.SUM)])
+        placement_spec = PlacementSpec(device_mesh, strategies=[_Partial(ReduceOp.SUM)])
         # partial reduce
         partial_sum = Tensor.from_local(local_sum, placement_spec)
         # all_reduce across device
-        placement_spec.placement_strategy[0] = Replicate()
+        placement_spec.strategies[0] = Replicate()
         return partial_sum.to_distributed(placement_spec)
     elif isinstance(input_strategy, Replicate):
         return Tensor.from_local(local_sum, placement_spec=input.placement_spec)

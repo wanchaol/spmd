@@ -1,15 +1,17 @@
 import torch
 from torch.distributed.distributed_c10d import (
-    # all_gather,
-    _all_gather_base,
-    all_reduce,
-    barrier,
-    broadcast,
-    scatter,
     get_rank,
     ReduceOp,
     ProcessGroup,
     _get_default_group
+)
+
+# autograd enabled collective
+from torch.distributed.nn.functional import (
+    _all_gather_base,
+    all_reduce,
+    broadcast,
+    scatter
 )
 
 class DeviceMesh(object):
@@ -27,8 +29,8 @@ class DeviceMesh(object):
     mesh: torch.Tensor
     # _world_pg: ProcessGroup
 
-    def __init__(self, mesh):
-        self.mesh = mesh
+    def __init__(self, *mesh):
+        self.mesh = torch.Tensor(mesh)
         # self._world_pg = _get_default_group()
 
         # TODO: support multi-dimensional device mesh
@@ -43,17 +45,12 @@ class DeviceMesh(object):
     def get_rank(self):
         return get_rank()
 
-    def scatter(self, tensor, scatter_list=None, src=0):
+    def scatter(self, tensors, src=0) -> torch.Tensor:
         current_rank = get_rank()
-        return scatter(tensor,
-                       scatter_list=scatter_list if current_rank == src else None,
-                       src=src)
+        return scatter(tensors, src=src)
 
     def broadcast(self, tensor, src=0):
         return broadcast(tensor, src=src)
-
-    def barrier(self):
-        barrier()
 
     # def all_gather(self, tensor_list, tensor):
     #     return all_gather(tensor_list, tensor)
