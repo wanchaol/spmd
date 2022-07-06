@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .tensor import (
-    DistributedTensor,
+    Tensor,
     DeviceMesh,
     PlacementSpec,
     Shard,
@@ -32,9 +32,9 @@ def distribute_tensor(tensor: torch.Tensor, spec: PlacementSpec):
                 local_tensor,
                 tensor_list
             )
-            dist_tensor = DistributedTensor.from_local(local_tensor, spec)
+            dist_tensor = Tensor.from_local(local_tensor, spec)
         elif isinstance(strategy, Replicate) or isinstance(strategy, _Partial):
-            dist_tensor = DistributedTensor.from_local(tensor, spec)
+            dist_tensor = Tensor.from_local(tensor, spec)
         else:
             raise RuntimeError("Not supported!")
 

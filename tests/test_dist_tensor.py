@@ -10,7 +10,7 @@ from torch.testing._internal.common_utils import (
 from .utils import DistTensorTestBase, with_comms
 from distributed.tensor import (
     DeviceMesh,
-    DistributedTensor,
+    Tensor,
     PlacementSpec,
     Replicate,
     Shard,
@@ -24,43 +24,43 @@ class DistTensorTest(DistTensorTestBase):
         device_mesh = DeviceMesh(torch.arange(self.world_size))
         shard_spec = PlacementSpec(device_mesh, placement_strategy=[Shard(0)])
         local_tensor = torch.randn(3, 3, device="cuda")
-        sharded_tensor = DistributedTensor.from_local(local_tensor, shard_spec)
+        sharded_tensor = Tensor.from_local(local_tensor, shard_spec)
         self.assertEqual(sharded_tensor.size(), torch.Size([12, 3]))
 
         replica_spec = PlacementSpec(device_mesh, placement_strategy=[Replicate()])
-        ddp_tensor = DistributedTensor.from_local(local_tensor, replica_spec)
+        ddp_tensor = Tensor.from_local(local_tensor, replica_spec)
         self.assertEqual(ddp_tensor.size(), local_tensor.size())
 
         partial_spec = PlacementSpec(device_mesh, placement_strategy=[_Partial(ReduceOp.SUM)])
-        partial_tensor = DistributedTensor.from_local(local_tensor, partial_spec)
+        partial_tensor = Tensor.from_local(local_tensor, partial_spec)
         self.assertEqual(partial_tensor.size(), local_tensor.size())
 
     @with_comms
-    def test_tensor_to_global(self):
+    def test_tensor_to_distributed(self):
         # test sharding a tensor, then get the global tensor
         device_mesh = DeviceMesh(torch.arange(self.world_size))
         shard_dim = 0
         shard_spec = PlacementSpec(device_mesh, placement_strategy=[Shard(shard_dim)])
+        replica_spec = PlacementSpec(device_mesh, placement_strategy=[Replicate()])
         expected_tensor = torch.randn(12, 3, device="cuda")
         chunked_list = expected_tensor.chunk(self.world_size, shard_dim)
         # make local tensor as the element of the corresponding chunked list
         local_tensor = chunked_list[self.rank]
-        sharded_tensor = DistributedTensor.from_local(local_tensor, shard_spec)
-        global_sharded_tensor = sharded_tensor.to_global()
+        sharded_tensor = Tensor.from_local(local_tensor, shard_spec)
+        global_sharded_tensor = sharded_tensor.to_distributed(replica_spec).local_tensor()
         self.assertEqual(global_sharded_tensor.size(), torch.Size([12, 3]))
         self.assertEqual(expected_tensor, global_sharded_tensor)
 
-        # test replicating a tensor, then get the global tensor
-        replica_spec = PlacementSpec(device_mesh, placement_strategy=[Replicate()])
-        ddp_tensor = DistributedTensor.from_local(local_tensor, replica_spec)
-        global_ddp_tensor = ddp_tensor.to_global()
+        # test replicating a tensor, then get self
+        ddp_tensor = Tensor.from_local(local_tensor, replica_spec)
+        global_ddp_tensor = ddp_tensor.to_distributed(replica_spec)
         self.assertEqual(ddp_tensor.size(), local_tensor.size())
 
         # test creating a partial tensor, then get the global tensor
         # note that the global tensor should get all reduced
         partial_spec = PlacementSpec(device_mesh, placement_strategy=[_Partial(ReduceOp.SUM)])
-        partial_tensor = DistributedTensor.from_local(local_tensor, partial_spec)
-        global_partial_tensor = partial_tensor.to_global()
+        partial_tensor = Tensor.from_local(local_tensor, partial_spec)
+        global_partial_tensor = partial_tensor.to_distributed(replica_spec)
         self.assertEqual(partial_tensor.size(), local_tensor.size())
 
     @with_comms
@@ -68,7 +68,7 @@ class DistTensorTest(DistTensorTestBase):
         device_mesh = DeviceMesh(torch.arange(self.world_size))
         shard_spec = PlacementSpec(device_mesh, placement_strategy=[Shard(0)])
         local_tensor = torch.randn(3, 3, device="cuda")
-        sharded_tensor = DistributedTensor.from_local(local_tensor, shard_spec)
+        sharded_tensor = Tensor.from_local(local_tensor, shard_spec)
 
         # modify shard_spec, and dist_tensor's spec should not be changed
         shard_spec.placement_strategy=[Replicate()]

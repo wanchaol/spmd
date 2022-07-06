@@ -1,5 +1,5 @@
 import functools
-# from .api import DistributedTensor
+# from .api import Tensor
 
 def all_equal(xs):
   xs = list(xs)
@@ -13,6 +13,6 @@ def all_equal(xs):
 #     def wrapper(types, args, kwargs):
 #         return func(types, args, kwargs)
 #     # update ops table
-#     DistributedTensor._dist_tensor_dispatch_ops[func]
+#     Tensor._dist_tensor_dispatch_ops[func]
 #     return wrapper
 

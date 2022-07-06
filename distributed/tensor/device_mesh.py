@@ -2,6 +2,7 @@ import torch
 from torch.distributed.distributed_c10d import (
     # all_gather,
     _all_gather_base,
+    all_reduce,
     barrier,
     broadcast,
     scatter,

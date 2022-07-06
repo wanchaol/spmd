@@ -8,7 +8,7 @@ from distributed import (
     distribute_tensor,
     distribute_module,
     DeviceMesh,
-    DistributedTensor,
+    Tensor,
     PlacementSpec,
     Shard,
     Replicate
@@ -62,10 +62,11 @@ class DDPWithDistTensorAPITest(DistTensorTestBase):
         shard0_spec = PlacementSpec(device_mesh, placement_strategy=[Shard(0)])
         input = torch.randn(10, n_features, device="cuda")
         # mark input as shard on dim 0
-        sharded_input = DistributedTensor.from_local(input, shard0_spec)
+        sharded_input = Tensor.from_local(input, shard0_spec)
 
         # run DDP like a normal model
         output = replicated_model(sharded_input)
+        output.sum()
 
 
 class DistTensorOpsTest(DistTensorTestBase):
@@ -84,7 +85,7 @@ class DistTensorOpsTest(DistTensorTestBase):
 
         dist_res = torch.addmm(input, mat1, mat2)
         local_res = torch.addmm(input_tensor, tensor_to_shard, tensor_to_replicate)
-        self.assertEqual(dist_res.to_global(), local_res)
+        self.assertEqual(dist_res.to_distributed(replica_spec).local_tensor(), local_res)
 
 
 if __name__ == '__main__':

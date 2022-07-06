@@ -10,9 +10,9 @@ from .placement_spec import (
 )
 from .utils import all_equal
 
-class DistributedTensor(torch.Tensor):
-    _local_tensor: torch.Tensor
-    _placement_spec: PlacementSpec
+class Tensor(torch.Tensor):
+    # _local_tensor: torch.Tensor
+    # _placement_spec: PlacementSpec
 
     __slots__ = ['_local_tensor', '_placement_spec']
 
@@ -55,30 +55,32 @@ class DistributedTensor(torch.Tensor):
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
         def unwrap_spec(e):
             # if this tensor is not Distributed, then return none. We will reinterpret it as replicated
-            if not isinstance(e, DistributedTensor):
+            if not isinstance(e, Tensor):
                 return None
             return e.placement_spec
         
         def unwrap(e):
-            if not isinstance(e, DistributedTensor):
+            if not isinstance(e, Tensor):
                 return None
             return e._local_tensor
 
         def wrap(e, spec):
-            if isinstance(e, DistributedTensor):
+            if isinstance(e, Tensor):
                 return e
-            return DistributedTensor.from_local(e, spec, run_check=False)
+            return Tensor.from_local(e, spec, run_check=False)
 
         args_spec = pytree.tree_map(unwrap_spec, args)
         # assert all_equal(spec.device_mesh for spec in args_spec), "can't compuate across different meshes"
-        for spec in args_spec:
-            assert spec.device_mesh.mesh.ndim == 1, "Only 1-D mesh supported now"
+        # for spec in args_spec:
+        #     assert spec.device_mesh.mesh.ndim == 1, "Only 1-D mesh supported now"
 
         # with cls.context():
         #     rs = tree_map(wrap, func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs)))
-        from .ops import sharded_addmm
+        from .ops import sharded_addmm, sharded_sum
         if str(func) == "aten.addmm.default":
             return sharded_addmm(types, args, kwargs)
+        elif str(func) == "aten.sum.default":
+            return sharded_sum(types, args, kwargs)
         else:
             # default to local tensor ops, this is wrong
             # but we use it now to enable more tensor property access 
@@ -127,50 +129,45 @@ class DistributedTensor(torch.Tensor):
         dist_tensor._local_tensor = local_tensor
         return dist_tensor
 
-
-    def to_global(self) -> torch.Tensor:
+    def to_distributed(self, spec: PlacementSpec) -> "Tensor":
+        # This API perform necessary transformations and get
+        # a new DistributedTensor with the new spec. i.e. for
+        # sharding it's a reshard behavior.
         # TODO: handle last shard uneven with padding
         # right now we assume all local shard equal size
         # NOTE: this call materializes the distributed tensor
         # on all rank by doing all_gather, it will increase
         # memory usage and potentially OOM if the global tensor
         # is too big to fit into CPU/CUDA memory.
-        placement_strategies = self._placement_spec.placement_strategy
-        device_mesh = self._placement_spec.device_mesh
-        assert len(placement_strategies) == 1, "Only support 1-d placement for now"
-        for idx, strategy in enumerate(placement_strategies):
-            # device_list = device_mesh.mesh[idx]
-            if isinstance(strategy, Shard):
-                # for shard, all_gather all shards and return the global tensor
-                # shard_dim = strategy.shard_dim
-                # num_shards = device_mesh.size()
-                global_tensor = torch.empty(
-                    self.size(),
-                    device=self._local_tensor.device,
-                    dtype=self.dtype
-                )
-                # NOTE: all_gather_base only works well when tensor
-                # sharded on a sequential list of devices
-                device_mesh.all_gather_base(global_tensor, self._local_tensor)
-                return global_tensor
-            elif isinstance(strategy, Replicate):
-                # for replicate, just return its local tensor
-                return self.local_tensor
-            elif isinstance(strategy, _Partial):
-                # for partial, trigger all_reduce and return the reduced result
-                device_mesh.all_reduce(self._local_tensor, strategy.reduce_op)
-                # update the PlacementSpec after all_reduce
-                self._placement_spec[idx] = Replicate()
-                return self.local_tensor
-            else:
-                raise RuntimeError(f"strategy type {type(strategy)} not supported!")
-
-    def to_distributed(self, spec: PlacementSpec) -> "DistributedTensor":
-        # This API perform necessary transformations and get
-        # a new DistributedTensor with the new spec. i.e. for
-        # sharding it's a reshard behavior.
-        # TODO: implement to_distributed
-        pass
+        current_strategy = self.placement_spec.placement_strategy
+        assert len(current_strategy) == 1, "Only support 1-d placement for now"
+        new_strategy = spec.placement_strategy
+        assert len(new_strategy) == 1, "Only support 1-d placement for now"
+        assert self.placement_spec.device_mesh.mesh.equal(spec.device_mesh.mesh), "cross mesh comm not support yet"
+        device_mesh = spec.device_mesh
+        if isinstance(current_strategy[0], Shard) and isinstance(new_strategy[0], Replicate):
+            # for shard, all_gather all shards and return the global tensor
+            # shard_dim = strategy.shard_dim
+            # num_shards = device_mesh.size()
+            global_tensor = torch.empty(
+                self.size(),
+                device=self._local_tensor.device,
+                dtype=self.dtype
+            )
+            # NOTE: all_gather_base only works well when tensor
+            # sharded on a sequential list of devices
+            device_mesh.all_gather_base(global_tensor, self._local_tensor)
+            replica_tensor = Tensor.from_local(global_tensor, self.placement_spec)
+            replica_tensor._placement_spec.placement_strategy[0] = Replicate()
+            return replica_tensor
+        elif isinstance(current_strategy[0], _Partial) and isinstance(new_strategy[0], Replicate):
+            device_mesh.all_reduce(self._local_tensor, current_strategy[0].reduce_op)
+            self._placement_spec.placement_strategy[0] = Replicate()
+            return self
+        elif current_strategy == new_strategy:
+            return self
+        else:
+            raise RuntimeError(f"Converting from {current_strategy} to {new_strategy} not supported!")
 
     def local_tensor(self) -> torch.Tensor:
         return self._local_tensor
