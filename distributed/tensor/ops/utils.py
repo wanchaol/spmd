@@ -2,11 +2,11 @@ from distributed.tensor import (
     Tensor
 )
 
-def unwrap_single_strategy(e):
+def unwrap_single_placement(e):
     if not isinstance(e, Tensor):
         return None
-    assert len(e.placement_spec.strategies) == 1, "more than one strategy"
-    return e.placement_spec.strategies[0]
+    assert len(e.placements) == 1, "more than one placement!"
+    return e.placements[0]
 
 def unwrap_local_tensor(e):
     if not isinstance(e, Tensor):

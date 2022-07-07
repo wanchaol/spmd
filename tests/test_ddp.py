@@ -9,7 +9,6 @@ from distributed import (
     distribute_module,
     DeviceMesh,
     Tensor,
-    PlacementSpec,
     Shard,
     Replicate
 )
@@ -30,9 +29,9 @@ class DistTensorAPITest(DistTensorTestBase):
     @with_comms
     def test_distribute_tensor(self):
         device_mesh = DeviceMesh(*range(self.world_size))
-        shard_spec = PlacementSpec(device_mesh, strategies=[Shard(0)])
+        shard_spec = [Shard(0)]
         tensor_to_shard = torch.randn(12, 3, device="cuda")
-        sharded_tensor = distribute_tensor(tensor_to_shard, shard_spec)
+        sharded_tensor = distribute_tensor(tensor_to_shard, shard_spec, device_mesh)
         self.assertEqual(sharded_tensor.size(), torch.Size([12, 3]))
         local_tensor = sharded_tensor.local_tensor()
         self.assertEqual(local_tensor.size(), torch.Size([3, 3]))
@@ -41,12 +40,12 @@ class DistTensorAPITest(DistTensorTestBase):
     def test_distribute_module(self):
         device_mesh = DeviceMesh(*range(self.world_size))
         module_to_shard = MyModel(20, 20, device="cuda")
-        shard_spec = PlacementSpec(device_mesh, strategies=[Shard(0)])
-        sharded_module = distribute_module(module_to_shard, shard_spec)
+        shard_spec = [Shard(0)]
+        sharded_module = distribute_module(module_to_shard, shard_spec, device_mesh)
 
         module_to_replicate = MyModel(20, 20, device="cuda").cuda()
-        replica_spec = PlacementSpec(device_mesh, strategies=[Replicate()])
-        replica_module = distribute_module(module_to_replicate, replica_spec)
+        replica_spec = [Replicate()]
+        replica_module = distribute_module(module_to_replicate, replica_spec, device_mesh)
 
 class DDPWithDistTensorAPITest(DistTensorTestBase):
     @with_comms
@@ -56,13 +55,13 @@ class DDPWithDistTensorAPITest(DistTensorTestBase):
         model = MyModel(n_features, 1, device="cuda")
         # model = MyModel(20, 20, device="meta")
         # mark model as replication
-        replica_spec = PlacementSpec(device_mesh, strategies=[Replicate()])
-        replicated_model = distribute_module(model, replica_spec)
+        replica_spec = [Replicate()]
+        replicated_model = distribute_module(model, replica_spec, device_mesh)
 
-        shard0_spec = PlacementSpec(device_mesh, strategies=[Shard(0)])
+        shard0_spec = [Shard(0)]
         input = torch.randn(10, n_features, device="cuda")
         # mark input as shard on dim 0
-        sharded_input = Tensor.from_local(input, shard0_spec)
+        sharded_input = Tensor.from_local(input, shard0_spec, device_mesh)
 
         # run DDP like a normal model
         output = replicated_model(sharded_input)
@@ -73,19 +72,19 @@ class DistTensorOpsTest(DistTensorTestBase):
     @with_comms
     def test_addmm(self):
         device_mesh = DeviceMesh(*range(self.world_size))
-        shard_spec = PlacementSpec(device_mesh, strategies=[Shard(0)])
-        replica_spec = PlacementSpec(device_mesh, strategies=[Replicate()])
+        shard_spec = [Shard(0)]
+        replica_spec = [Replicate()]
 
         tensor_to_shard = torch.randn(12, 8, device="cuda")
-        mat1 = distribute_tensor(tensor_to_shard, shard_spec)
+        mat1 = distribute_tensor(tensor_to_shard, shard_spec, device_mesh)
         tensor_to_replicate = torch.randn(8, 4, device="cuda")
-        mat2 = distribute_tensor(tensor_to_replicate, replica_spec)
+        mat2 = distribute_tensor(tensor_to_replicate, replica_spec, device_mesh)
         input_tensor = torch.randn(4, device="cuda")
-        input = distribute_tensor(input_tensor, replica_spec)
+        input = distribute_tensor(input_tensor, replica_spec, device_mesh)
 
         dist_res = torch.addmm(input, mat1, mat2)
         local_res = torch.addmm(input_tensor, tensor_to_shard, tensor_to_replicate)
-        self.assertEqual(dist_res.to_distributed(replica_spec).local_tensor(), local_res)
+        self.assertEqual(dist_res.to_distributed(replica_spec, device_mesh).local_tensor(), local_res)
 
 
 if __name__ == '__main__':

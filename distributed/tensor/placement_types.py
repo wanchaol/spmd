@@ -23,8 +23,3 @@ class Replicate(Placement):
 class _Partial(Placement):
     # partial placement with reduce op
     reduce_op: c10d.ReduceOp
-
-@dataclass
-class PlacementSpec(object):
-    device_mesh: DeviceMesh
-    strategies: List[Placement]
