@@ -3,6 +3,8 @@ from torch.distributed.distributed_c10d import (
     get_rank,
     ReduceOp,
     ProcessGroup,
+    ProcessGroupGloo,
+    ProcessGroupNCCL,
     _get_default_group
 )
 
@@ -26,15 +28,23 @@ class DeviceMesh(object):
     decouple detailed communication backend with the underlying
     DistributedTensor implementation.
     '''
+    # device_type: str
     mesh: torch.Tensor
     # _world_pg: ProcessGroup
 
     def __init__(self, *mesh):
+        # self.device_type = device_type
         self.mesh = torch.Tensor(mesh)
-        # self._world_pg = _get_default_group()
+
+        # default_pg = _get_default_group()
+        # if device_type = "cpu":
+        #     assert isinstance(default_pg, ProcessGroupGloo), "ProcessGroup not supporting CPU"
+        # elif device_type = "cuda":
+        #     assert isinstance(default_pg, ProcessGroupNCCL) or isinstance(default_pg, ProcessGroupGloo)
 
         # TODO: support multi-dimensional device mesh
         assert self.mesh.ndim == 1, "Only support 1-d device mesh for now"
+
 
     def __repr__(self):
         return f"DeviceMesh:({self.mesh})"

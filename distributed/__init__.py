@@ -12,7 +12,7 @@ from .tensor import (
 
 torch.__future__.set_overwrite_module_params_on_conversion(True)
 
-def distribute_tensor(tensor: torch.Tensor, placements: List[Placement], device_mesh: DeviceMesh=None):
+def distribute_tensor(tensor: torch.Tensor, device_mesh: DeviceMesh=None, placements: List[Placement]=None):
     # distribute the tensor according to PlacementSpec
     assert len(placements) == 1, "Only support 1-d placement now"
     for idx, placement in enumerate(placements):
@@ -28,16 +28,16 @@ def distribute_tensor(tensor: torch.Tensor, placements: List[Placement], device_
             scatter_shape[shard_dim] = chunk_size 
             with torch.no_grad():
                 local_tensor = device_mesh.scatter(tensor_list)
-            dist_tensor = Tensor.from_local(local_tensor, placements, device_mesh)
+            dist_tensor = Tensor.from_local(local_tensor, device_mesh, placements)
         elif isinstance(placement, Replicate) or isinstance(placement, _Partial):
             with torch.no_grad():
-                dist_tensor = Tensor.from_local(tensor, placements, device_mesh)
+                dist_tensor = Tensor.from_local(tensor, device_mesh, placements)
         else:
             raise RuntimeError("Not supported!")
 
     return dist_tensor
 
-def distribute_module(mod: nn.Module, spec: List[Placement], device_mesh: DeviceMesh=None):
+def distribute_module(mod: nn.Module, device_mesh: DeviceMesh=None, spec: List[Placement]=None):
     '''
     this function coverts all module parameters
     to distributed tensor parameters according to
@@ -47,7 +47,7 @@ def distribute_module(mod: nn.Module, spec: List[Placement], device_mesh: Device
     '''
     def to_dist_tensor(t):
         if isinstance(t, nn.Parameter):
-            return distribute_tensor(t.data, spec, device_mesh)
+            return distribute_tensor(t.data, device_mesh, spec)
         else:
             return t
 

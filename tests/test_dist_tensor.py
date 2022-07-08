@@ -36,19 +36,19 @@ class DistTensorTest(DistTensorTestBase):
         device_mesh = DeviceMesh(*range(self.world_size))
         shard_spec = [Shard(0)]
         local_tensor = torch.randn(3, 3, device="cuda")
-        sharded_tensor = Tensor.from_local(local_tensor, shard_spec, device_mesh)
+        sharded_tensor = Tensor.from_local(local_tensor, device_mesh, shard_spec)
         self.assertEqual(sharded_tensor.size(), torch.Size([12, 3]))
 
         replica_spec = [Replicate()]
-        ddp_tensor = Tensor.from_local(local_tensor, replica_spec, device_mesh)
+        ddp_tensor = Tensor.from_local(local_tensor, device_mesh, replica_spec)
         self.assertEqual(ddp_tensor.size(), local_tensor.size())
 
         partial_spec = [_Partial(ReduceOp.SUM)]
-        partial_tensor = Tensor.from_local(local_tensor, partial_spec, device_mesh)
+        partial_tensor = Tensor.from_local(local_tensor, device_mesh, partial_spec)
         self.assertEqual(partial_tensor.size(), local_tensor.size())
 
     @with_comms
-    def test_tensor_to_distributed(self):
+    def test_tensor_redistribute(self):
         # test sharding a tensor, then get the global tensor
         device_mesh = DeviceMesh(*range(self.world_size))
         shard_dim = 0
@@ -58,21 +58,21 @@ class DistTensorTest(DistTensorTestBase):
         chunked_list = expected_tensor.chunk(self.world_size, shard_dim)
         # make local tensor as the element of the corresponding chunked list
         local_tensor = chunked_list[self.rank]
-        sharded_tensor = Tensor.from_local(local_tensor, shard_spec, device_mesh)
-        global_sharded_tensor = sharded_tensor.to_distributed(replica_spec, device_mesh).local_tensor()
+        sharded_tensor = Tensor.from_local(local_tensor, device_mesh, shard_spec)
+        global_sharded_tensor = sharded_tensor.redistribute(device_mesh, replica_spec).local_tensor()
         self.assertEqual(global_sharded_tensor.size(), torch.Size([12, 3]))
         self.assertEqual(expected_tensor, global_sharded_tensor)
 
         # test replicating a tensor, then get self
-        ddp_tensor = Tensor.from_local(local_tensor, replica_spec, device_mesh)
-        global_ddp_tensor = ddp_tensor.to_distributed(replica_spec, device_mesh)
+        ddp_tensor = Tensor.from_local(local_tensor, device_mesh, replica_spec)
+        global_ddp_tensor = ddp_tensor.redistribute(device_mesh, replica_spec)
         self.assertEqual(ddp_tensor.size(), local_tensor.size())
 
         # test creating a partial tensor, then get the global tensor
         # note that the global tensor should get all reduced
         partial_spec = [_Partial(ReduceOp.SUM)]
-        partial_tensor = Tensor.from_local(local_tensor, partial_spec, device_mesh)
-        global_partial_tensor = partial_tensor.to_distributed(replica_spec, device_mesh)
+        partial_tensor = Tensor.from_local(local_tensor, device_mesh, partial_spec)
+        global_partial_tensor = partial_tensor.redistribute(device_mesh, replica_spec)
         self.assertEqual(partial_tensor.size(), local_tensor.size())
 
     @with_comms
@@ -80,12 +80,20 @@ class DistTensorTest(DistTensorTestBase):
         device_mesh = DeviceMesh(*range(self.world_size))
         shard_spec = [Shard(0)]
         local_tensor = torch.randn(3, 3, device="cuda")
-        sharded_tensor = Tensor.from_local(local_tensor, shard_spec, device_mesh)
+        sharded_tensor = Tensor.from_local(local_tensor, device_mesh, shard_spec)
 
         # modify shard_spec, and dist_tensor's spec should not be changed
         shard_spec[0]=Replicate()
         self.assertTrue(sharded_tensor.placements is not shard_spec)
         self.assertNotEqual(sharded_tensor.placements, shard_spec)
+
+    @with_comms
+    def test_tensor_properties(self):
+        device_mesh = DeviceMesh(*range(self.world_size))
+        shard_spec = [Shard(0)]
+        local_tensor = torch.randn(3, 3, device="cuda")
+        sharded_tensor = Tensor.from_local(local_tensor, device_mesh, shard_spec)
+        print(sharded_tensor.device)
 
 
 if __name__ == '__main__':

@@ -33,15 +33,15 @@ def sharded_addmm(types, args=(), kwargs=None):
         chunk_size = mat1.size(0) // world_size
         assert mat1_shard_dim == 0, "shard dim should be 0!"
         local_res = local_input.addmm(local_mat1, local_mat2, beta=beta, alpha=alpha)
-        return Tensor.from_local(local_res, mat1.placements, device_mesh)
+        return Tensor.from_local(local_res, device_mesh, mat1.placements)
     elif isinstance(mat1_placement, Replicate) and isinstance(mat2_placement, Shard):
         mat2_shard_dim = mat2_placement.dim
         assert mat2_shard_dim == 1, "shard dim should be 1!"
         chunk_size = mat1.size(1) // world_size
         local_res = local_input.addmm(local_mat1, local_mat2, beta=beta, alpha=alpha)
-        return Tensor.from_local(local_res, mat2.placements, device_mesh)
+        return Tensor.from_local(local_res, device_mesh, mat2.placements)
     elif isinstance(mat1_placement, Replicate) and isinstance(mat2_placement, Replicate):
         local_res = local_input.addmm(local_mat1, local_mat2, beta=beta, alpha=alpha)
-        return Tensor.from_local(local_res, mat1.placement, device_mesh, run_check=False)
+        return Tensor.from_local(local_res, device_mesh, mat1.placement, run_check=False)
     else:
         raise RuntimeError(f"addmm operator supported for inputs: {mat1}, {mat2}")

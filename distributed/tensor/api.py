@@ -16,14 +16,14 @@ class Tensor(torch.Tensor):
 
     # class attribute that handles ops, all handled
     # ops should appear in this table
-    _dist_tensor_dispatch_ops: Dict[Callable, Callable] = {}
+    _dist_tensor_dispatch_ops: Dict[str, Callable] = {}
 
     # context = contextlib.nullcontext
 
     __torch_function__ = torch._C._disabled_torch_function_impl
 
     @staticmethod
-    def __new__(cls, placements: List[Placement], device_mesh: DeviceMesh, size: torch.Size, **kwargs):
+    def __new__(cls, device_mesh: DeviceMesh, placements: List[Placement], size: torch.Size, **kwargs):
         # new method instruct wrapper tensor and add placement spec
         # it does not do actual distribution, __init__ should do it instead.
         # TODO: implement __init__ for tensor constructors
@@ -33,11 +33,13 @@ class Tensor(torch.Tensor):
         dtype = kwargs['dtype']
         layout = kwargs['layout']
         requires_grad = kwargs['requires_grad']
+        device = kwargs.get('device', 'cpu')
         
         r = torch.Tensor._make_wrapper_subclass(  # type: ignore[attr-defined]
             cls,
             size,
             dtype=dtype,
+            device=device,
             layout=layout,
             requires_grad=requires_grad
         )
@@ -67,7 +69,7 @@ class Tensor(torch.Tensor):
         def wrap(e, placements, mesh):
             if isinstance(e, Tensor):
                 return e
-            return Tensor.from_local(e, placements, mesh, run_check=False)
+            return Tensor.from_local(e, mesh, placements, run_check=False)
 
         args_mesh = pytree.tree_map(unwrap_mesh, args)
         # assert all_equal(spec.device_mesh for spec in args_spec), "can't compuate across different meshes"
@@ -90,7 +92,7 @@ class Tensor(torch.Tensor):
 
 
     @classmethod
-    def from_local(cls, local_tensor, placements, device_mesh=None, run_check=True):
+    def from_local(cls, local_tensor, device_mesh=None, placements=None, run_check=True):
         # if same shape/dtype, no need to run_check, if not, must allgather
         # the metadatas to check the size/dtype across ranks
         # There should be no data communication unless there's replication
@@ -117,17 +119,18 @@ class Tensor(torch.Tensor):
             pass
 
         dist_tensor = cls(
-            placements,
             device_mesh,
+            placements,
             torch.Size(tensor_shape),
             dtype=local_tensor.dtype,
+            device=local_tensor.device,
             layout=local_tensor.layout,
             requires_grad=local_tensor.requires_grad
         )
         dist_tensor._local_tensor = local_tensor
         return dist_tensor
 
-    def to_distributed(self, placements: List[Placement], device_mesh=None) -> "Tensor":
+    def redistribute(self, device_mesh=None, placements: List[Placement]=None) -> "Tensor":
         # This API perform necessary transformations and get
         # a new DistributedTensor with the new spec. i.e. for
         # sharding it's a reshard behavior.
@@ -146,7 +149,7 @@ class Tensor(torch.Tensor):
             # NOTE: all_gather_base only works well when tensor
             # sharded on a sequential list of devices
             device_mesh.all_gather_base(global_tensor, self._local_tensor)
-            replica_tensor = Tensor.from_local(global_tensor, placements, device_mesh)
+            replica_tensor = Tensor.from_local(global_tensor, device_mesh, placements)
             replica_tensor._placements[0] = Replicate()
             return replica_tensor
         elif isinstance(current_placements[0], _Partial) and isinstance(placements[0], Replicate):
@@ -166,7 +169,7 @@ class Tensor(torch.Tensor):
         # placement should be a read only propety
         # to disallow caller modification on it
         # caller who want a different PlacementSpec
-        # should call to_distributed instead.
+        # should call redistribute instead.
         return self._placements
 
     @property
@@ -174,5 +177,5 @@ class Tensor(torch.Tensor):
         # device_mesh should be a read only propety
         # to disallow caller modification on it
         # caller who want a different device_mesh
-        # should call to_distributed instead.
+        # should call redistribute instead.
         return self._device_mesh

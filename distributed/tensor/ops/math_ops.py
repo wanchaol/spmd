@@ -20,11 +20,11 @@ def sharded_sum(types, args=(), kwargs=None):
     if isinstance(input_placement, Shard) or isinstance(input_placement, _Partial):
         placements = [_Partial(ReduceOp.SUM)]
         # partial reduce
-        partial_sum = Tensor.from_local(local_sum, placements, device_mesh)
+        partial_sum = Tensor.from_local(local_sum, device_mesh, placements)
         # all_reduce across device
         placements[0] = Replicate()
-        return partial_sum.to_distributed(placements)
+        return partial_sum.redistribute(device_mesh, placements)
     elif isinstance(input_placement, Replicate):
-        return Tensor.from_local(local_sum, placements=input.placements, device_mesh=device_mesh)
+        return Tensor.from_local(local_sum, device_mesh=device_mesh, placements=input.placements)
     else:
         raise RuntimeError("Not supported!")
