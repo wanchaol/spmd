@@ -16,9 +16,19 @@ from torch.distributed.nn.functional import (
     scatter
 )
 
+_global_device_mesh = None
+
+def get_global_device_mesh():
+    global _global_device_mesh
+    return _global_device_mesh
+
+def set_global_device_mesh(mesh):
+    global _global_device_mesh
+    _global_device_mesh = mesh
+
 class DeviceMesh(object):
     '''
-    Device Mesh object
+    Device Mesh object, can be used as a context manager.
     By default describes the device ids, layout and serves
     as a proxy for communication among the device lists.
 
@@ -32,7 +42,7 @@ class DeviceMesh(object):
     mesh: torch.Tensor
     # _world_pg: ProcessGroup
 
-    def __init__(self, *mesh):
+    def __init__(self, mesh):
         # self.device_type = device_type
         self.mesh = torch.Tensor(mesh)
 
@@ -45,6 +55,14 @@ class DeviceMesh(object):
         # TODO: support multi-dimensional device mesh
         assert self.mesh.ndim == 1, "Only support 1-d device mesh for now"
 
+    def __enter__(self):
+        # set global device_mesh to this instance
+        set_global_device_mesh(self)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        # unset global device mesh
+        set_global_device_mesh(None)
 
     def __repr__(self):
         return f"DeviceMesh:({self.mesh})"

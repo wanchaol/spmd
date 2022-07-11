@@ -1,7 +1,7 @@
 from typing import List
 import torch
 import torch.nn as nn
-from .tensor import (
+from distributed.tensor import (
     Tensor,
     DeviceMesh,
     Placement,

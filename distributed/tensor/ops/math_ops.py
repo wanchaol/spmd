@@ -2,14 +2,12 @@ import torch
 from torch.distributed.distributed_c10d import (
     ReduceOp
 )
-from distributed import (
-    Tensor,
-    Shard,
-    Replicate,
-    _Partial
-)
+from distributed.tensor.api import Tensor
+from distributed.tensor.placement_types import Shard, Replicate, _Partial
+from distributed.tensor.ops.utils import register_impl
 
-def sharded_sum(types, args=(), kwargs=None):
+@register_impl("aten.sum.default")
+def dist_sum(types, args=(), kwargs=None):
     input = args[0]
     local_input = input.local_tensor()
     input_placement = input.placements[0]

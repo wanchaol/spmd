@@ -1,18 +1,22 @@
 import copy
 import torch
-import torch.utils._pytree as pytree
+from torch.utils._pytree import tree_map
 from typing import Dict, List, Callable
-from .device_mesh import DeviceMesh
-from .placement_types import (
+from distributed.tensor.device_mesh import (
+    get_global_device_mesh,
+    DeviceMesh
+)
+from distributed.tensor.placement_types import (
     Placement,
     Shard,
     Replicate,
     _Partial
 )
-from .utils import all_equal
+from distributed.tensor.utils import all_equal
+
 
 class Tensor(torch.Tensor):
-    __slots__ = ['_local_tensor', '_placements', '_device_mesh']
+    __slots__ = ['_local_tensor', '_device_mesh', '_placements']
 
     # class attribute that handles ops, all handled
     # ops should appear in this table
@@ -43,15 +47,15 @@ class Tensor(torch.Tensor):
             layout=layout,
             requires_grad=requires_grad
         )
+        r._device_mesh = device_mesh
         # deepcopy and set spec, data should be handled
         # by __init__ or from_local instead.
         r._placements = copy.deepcopy(placements)
-        r._device_mesh = device_mesh
         return r
 
     def __repr__(self):
         # TODO: consider all_gather the local tensors for better debugging
-        return f"DistributedTensor({self._local_tensor}, {self._placements})"
+        return f"DistributedTensor({self._local_tensor}, placements={self._placements})"
 
     @classmethod
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
@@ -62,32 +66,34 @@ class Tensor(torch.Tensor):
             return e.device_mesh
         
         def unwrap(e):
-            if not isinstance(e, Tensor):
-                return None
-            return e._local_tensor
+            return e._local_tensor if isinstance(e, Tensor) else e
 
-        def wrap(e, placements, mesh):
-            if isinstance(e, Tensor):
-                return e
-            return Tensor.from_local(e, mesh, placements, run_check=False)
+        def wrap(e, mesh, placements):
+            return Tensor.from_local(e, mesh, placements, run_check=False) if isinstance(e, torch.Tensor) else e
 
-        args_mesh = pytree.tree_map(unwrap_mesh, args)
+        args_mesh = tree_map(unwrap_mesh, args)
         # assert all_equal(spec.device_mesh for spec in args_spec), "can't compuate across different meshes"
         # for spec in args_spec:
         #     assert spec.device_mesh.mesh.ndim == 1, "Only 1-D mesh supported now"
 
-        # with cls.context():
-        #     rs = tree_map(wrap, func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs)))
-        from .ops import sharded_addmm, sharded_sum
-        if str(func) == "aten.addmm.default":
-            return sharded_addmm(types, args, kwargs)
-        elif str(func) == "aten.sum.default":
-            return sharded_sum(types, args, kwargs)
+        # take a short cut if all arguments are replicated
+        all_replicated = True
+        for arg in args:
+            if isinstance(arg, Tensor):
+                all_replicated &= (arg.placements[0] == Replicate())
+
+        if all_replicated:
+            rs = func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs))
+            return wrap(rs, args_mesh[0], args[0].placements)
+
+        if str(func) in Tensor._dist_tensor_dispatch_ops:
+            # dispatch to distributed tensor ops
+            return Tensor._dist_tensor_dispatch_ops[str(func)](types, args, kwargs)
         else:
             # default to local tensor ops, this is wrong
             # but we use it now to enable more tensor property access 
-            rs = func(*pytree.tree_map(unwrap, args), **pytree.tree_map(unwrap, kwargs))
-            rs = wrap(rs, args[0].placements, args_mesh[0])
+            rs = func(*tree_map(unwrap, args), **tree_map(unwrap, kwargs))
+            rs = wrap(rs, args_mesh[0], args[0].placements)
             return rs
 
 
@@ -97,6 +103,7 @@ class Tensor(torch.Tensor):
         # the metadatas to check the size/dtype across ranks
         # There should be no data communication unless there's replication
         # strategy, where we broadcast the replication from rank 0
+        device_mesh = get_global_device_mesh() if device_mesh is None else device_mesh
         tensor_shape = list(local_tensor.size())
         for idx, placement in enumerate(placements):
             # device_list = device_mesh.mesh[idx]
@@ -136,6 +143,7 @@ class Tensor(torch.Tensor):
         # sharding it's a reshard behavior.
         # TODO: handle last shard uneven with padding
         # right now we assume all local shard equal size
+        device_mesh = get_global_device_mesh() if device_mesh is None else device_mesh
         current_placements = self.placements
         assert len(placements) == 1, "Only support 1-d placement for now"
         assert self.device_mesh.mesh.equal(device_mesh.mesh), "cross mesh comm not support yet"
