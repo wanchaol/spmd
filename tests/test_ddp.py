@@ -28,7 +28,7 @@ class MyModel(nn.Module):
 class DistTensorAPITest(DistTensorTestBase):
     @with_comms
     def test_distribute_tensor(self):
-        device_mesh = DeviceMesh(list(range(self.world_size)))
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
         shard_spec = [Shard(0)]
         tensor_to_shard = torch.randn(12, 3, device="cuda")
         sharded_tensor = distribute_tensor(tensor_to_shard, device_mesh, shard_spec)
@@ -38,7 +38,7 @@ class DistTensorAPITest(DistTensorTestBase):
 
     @with_comms
     def test_distribute_module(self):
-        device_mesh = DeviceMesh(list(range(self.world_size)))
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
         module_to_shard = MyModel(20, 20, device="cuda")
         shard_spec = [Shard(0)]
         sharded_module = distribute_module(module_to_shard, device_mesh, shard_spec)
@@ -50,7 +50,7 @@ class DistTensorAPITest(DistTensorTestBase):
 class DDPWithDistTensorAPITest(DistTensorTestBase):
     @with_comms
     def test_full_replicated(self):
-        device_mesh = DeviceMesh(list(range(self.world_size)))
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
         n_features = 10
         model = MyModel(n_features, n_features, device="cuda")
         # mark model as replication
@@ -69,7 +69,7 @@ class DDPWithDistTensorAPITest(DistTensorTestBase):
 
     @with_comms
     def test_ddp_dist_tensor(self):
-        device_mesh = DeviceMesh(list(range(self.world_size)))
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
         n_features = 100
         model = MyModel(n_features, 1, device="cuda")
         # model = MyModel(20, 20, device="meta")
@@ -90,7 +90,7 @@ class DDPWithDistTensorAPITest(DistTensorTestBase):
 class DistTensorOpsTest(DistTensorTestBase):
     @with_comms
     def test_addmm(self):
-        device_mesh = DeviceMesh(list(range(self.world_size)))
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 
@@ -107,7 +107,7 @@ class DistTensorOpsTest(DistTensorTestBase):
 
     @with_comms
     def test_mm(self):
-        device_mesh = DeviceMesh(list(range(self.world_size)))
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 
@@ -123,7 +123,7 @@ class DistTensorOpsTest(DistTensorTestBase):
 
     @with_comms
     def test_t(self):
-        device_mesh = DeviceMesh(list(range(self.world_size)))
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 

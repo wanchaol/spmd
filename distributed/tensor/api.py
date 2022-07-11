@@ -104,6 +104,13 @@ class Tensor(torch.Tensor):
         # There should be no data communication unless there's replication
         # strategy, where we broadcast the replication from rank 0
         device_mesh = get_global_device_mesh() if device_mesh is None else device_mesh
+        # convert the local tensor to desired device base on device mesh's device_type
+        local_tensor = local_tensor.to(device_mesh.device_type)
+
+        # set default placements to replicated if not specified
+        if placements is None:
+            placements = [Replicate() for _ in device_mesh.ndim]
+
         tensor_shape = list(local_tensor.size())
         for idx, placement in enumerate(placements):
             # device_list = device_mesh.mesh[idx]

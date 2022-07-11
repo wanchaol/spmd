@@ -38,19 +38,21 @@ class DeviceMesh(object):
     decouple detailed communication backend with the underlying
     DistributedTensor implementation.
     '''
-    # device_type: str
+    device_type: str
     mesh: torch.Tensor
     # _world_pg: ProcessGroup
 
-    def __init__(self, mesh):
-        # self.device_type = device_type
+    def __init__(self, device_type, mesh):
+        self.device_type = device_type
         self.mesh = torch.Tensor(mesh)
 
-        # default_pg = _get_default_group()
-        # if device_type = "cpu":
-        #     assert isinstance(default_pg, ProcessGroupGloo), "ProcessGroup not supporting CPU"
-        # elif device_type = "cuda":
-        #     assert isinstance(default_pg, ProcessGroupNCCL) or isinstance(default_pg, ProcessGroupGloo)
+        default_pg = _get_default_group()
+        if device_type == "cpu":
+            assert isinstance(default_pg, ProcessGroupGloo), f"ProcessGroup {type(default_pg)} not supporting CPU!"
+        elif device_type == "cuda":
+            assert isinstance(default_pg, ProcessGroupNCCL) or isinstance(default_pg, ProcessGroupGloo)
+        else:
+            raise RuntimeError(f"DeviceMesh only support cpu or cuda device type, but got {device_type}")
 
         # TODO: support multi-dimensional device mesh
         assert self.mesh.ndim == 1, "Only support 1-d device mesh for now"
@@ -69,6 +71,10 @@ class DeviceMesh(object):
 
     def size(self, dim=0):
         return self.mesh.size(dim)
+
+    @property
+    def ndim(self):
+        return self.mesh.ndim
 
     def get_rank(self):
         return get_rank()
