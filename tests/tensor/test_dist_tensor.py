@@ -7,8 +7,8 @@ from torch.distributed.distributed_c10d import (
 from torch.testing._internal.common_utils import (
     run_tests
 )
-from .utils import DistTensorTestBase, with_comms
-from distributed.tensor import (
+from ..utils import DistTensorTestBase, with_comms
+from spmd.tensor import (
     DeviceMesh,
     Tensor,
     Replicate,
@@ -19,7 +19,7 @@ from distributed.tensor import (
 class DistTensorTest(DistTensorTestBase):
     # @with_comms
     # def test_tensor_constructor(self):
-    #     import distributed.tensor as dist_tensor
+    #     import spmd.tensor as dist_tensor
     #     shard_spec = PlacementSpec(device_mesh, strategies=[Shard(0)])
     #     empty_tensor = dist_tensor.empty((12, 10), placement_spec=shard_spec)
     #     zero_tensor = dist_tensor.zeros((12, 10), placement_spec=shard_spec)

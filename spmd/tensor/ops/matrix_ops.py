@@ -3,13 +3,13 @@ import torch.utils._pytree as pytree
 from torch.distributed.distributed_c10d import (
     ReduceOp
 )
-from distributed.tensor.api import Tensor
-from distributed.tensor.placement_types import (
+from spmd.tensor.api import Tensor
+from spmd.tensor.placement_types import (
     Shard,
     Replicate,
     _Partial
 )
-from distributed.tensor.ops.utils import (
+from spmd.tensor.ops.utils import (
     unwrap_local_tensor,
     unwrap_single_placement,
     is_shard_on_dim,
@@ -68,6 +68,7 @@ def dist_mm(types, args=(), kwargs=None):
     mat1_placement, mat2_placement = pytree.tree_map(unwrap_single_placement, args)
     device_mesh = mat1.device_mesh
 
+    # print(f"?????!!! sharded mm mat1 size: {mat1.size()}, mat2 size: {mat2.size()}")
     # print(f"?????!!! sharded mm mat1 placement {mat1_placement}, mat2 placement: {mat2_placement}")
 
     # only implemented the first 3
@@ -83,7 +84,7 @@ def dist_mm(types, args=(), kwargs=None):
         placements = [_Partial(ReduceOp.SUM)]
         partial_sum = Tensor.from_local(local_res, device_mesh, placements)
         # all reduce across ranks
-        placements[0] = [Replicate()]
+        placements[0] = Replicate()
         return partial_sum.redistribute(device_mesh, placements)
     else:
         raise RuntimeError(f"mm operator supported for inputs: {mat1}, {mat2}")

@@ -2,7 +2,7 @@ import torch.distributed.distributed_c10d as c10d
 
 from typing import List
 from dataclasses import dataclass
-from distributed.tensor.device_mesh import DeviceMesh
+from spmd.tensor.device_mesh import DeviceMesh
 
 @dataclass
 class Placement(object):

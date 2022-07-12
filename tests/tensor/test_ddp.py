@@ -3,8 +3,8 @@ import torch.nn as nn
 from torch.testing._internal.common_utils import (
     run_tests
 )
-from .utils import DistTensorTestBase, with_comms
-from distributed import (
+from ..utils import DistTensorTestBase, with_comms
+from spmd import (
     distribute_tensor,
     distribute_module,
     DeviceMesh,
@@ -113,13 +113,28 @@ class DistTensorOpsTest(DistTensorTestBase):
 
         tensor_to_shard = torch.randn(12, 8, device="cuda", requires_grad=True)
         mat1 = distribute_tensor(tensor_to_shard, device_mesh, shard_spec)
-        tensor_to_replicate = torch.randn(8, 4, device="cuda", requires_grad=True)
+        tensor_to_replicate = torch.randn(8, 16, device="cuda", requires_grad=True)
         mat2 = distribute_tensor(tensor_to_replicate, device_mesh, replica_spec)
 
         dist_res = torch.mm(mat1, mat2)
-        local_res = torch.mm(tensor_to_shard, tensor_to_replicate)
-        self.assertEqual(dist_res.redistribute(device_mesh, replica_spec).local_tensor(), local_res)
+        # local_res = torch.mm(tensor_to_shard, tensor_to_replicate)
+        # self.assertEqual(dist_res.redistribute(device_mesh, replica_spec).local_tensor(), local_res)
+        grad_res = torch.ones(12, 16, device="cuda")
+        grad_dist_res = distribute_tensor(grad_res, device_mesh, shard_spec)
+        dist_res.backward(grad_dist_res)
+        print(mat1.grad)
         # dist_res.sum().backward()
+
+    @with_comms
+    def test_sum(self):
+        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        shard_spec = [Shard(0)]
+        replica_spec = [Replicate()]
+
+        tensor_to_shard = torch.randn(12, 8, device="cuda", requires_grad=True)
+        mat1 = distribute_tensor(tensor_to_shard, device_mesh, shard_spec)
+        mat1.sum()
+        tensor_to_replicate = torch.randn(8, 16, device="cuda", requires_grad=True)
 
     @with_comms
     def test_t(self):
