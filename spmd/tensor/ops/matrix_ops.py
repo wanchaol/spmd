@@ -1,4 +1,5 @@
 # implement matrix related ops for distributed tensor
+import torch
 import torch.utils._pytree as pytree
 from torch.distributed.distributed_c10d import (
     ReduceOp
@@ -18,18 +19,15 @@ from spmd.tensor.ops.utils import (
 
 
 @register_impl("aten.addmm.default")
-def dist_addmm(types, args=(), kwargs=None):
+def dist_addmm(input: Tensor, mat1: Tensor, mat2: Tensor, beta=1, alpha=1) -> Tensor:
     # dist addmm:
     # input:shard(0)    mat1: shard(0),  mat2: replicate
     # input:shard(1)    mat1: replicate, mat2: shard(1)
     # input:replicate   mat1: shard(0),  mat2: replicate
     # input:replicate   mat1: replicate, mat2: shard(1)
     # input:replicate   mat1: shard(0),  mat2: shard(1)
-    input, mat1, mat2 = args
-    local_input, local_mat1, local_mat2 = pytree.tree_map(unwrap_local_tensor, args)
-    input_placement, mat1_placement, mat2_placement = pytree.tree_map(unwrap_single_placement, args)
-    beta = kwargs.get("beta", 1)
-    alpha = kwargs.get("alpha", 1)
+    local_input, local_mat1, local_mat2 = pytree.tree_map(unwrap_local_tensor, (input, mat1, mat2))
+    input_placement, mat1_placement, mat2_placement = pytree.tree_map(unwrap_single_placement, (input, mat1, mat2))
     device_mesh = mat1.device_mesh
     world_size = device_mesh.size()
     current_rank = device_mesh.get_rank()
@@ -57,15 +55,14 @@ def dist_addmm(types, args=(), kwargs=None):
         raise RuntimeError(f"addmm operator supported for inputs: {mat1}, {mat2}")
 
 @register_impl("aten.mm.default")
-def dist_mm(types, args=(), kwargs=None):
+def dist_mm(mat1: Tensor, mat2: Tensor) -> Tensor:
     # dist mm:
     # mat1: shard(0),  mat2: replicate
     # mat1: replicate, mat2: shard(1)
     # mat1: shard(1),  mat2: shard(0)
     # mat1: shard(0),  mat2: shard(1)
-    mat1, mat2 = args
-    local_mat1, local_mat2 = pytree.tree_map(unwrap_local_tensor, args)
-    mat1_placement, mat2_placement = pytree.tree_map(unwrap_single_placement, args)
+    local_mat1, local_mat2 = pytree.tree_map(unwrap_local_tensor, (mat1, mat2))
+    mat1_placement, mat2_placement = pytree.tree_map(unwrap_single_placement, (mat1, mat2))
     device_mesh = mat1.device_mesh
 
     # print(f"?????!!! sharded mm mat1 size: {mat1.size()}, mat2 size: {mat2.size()}")
@@ -91,14 +88,13 @@ def dist_mm(types, args=(), kwargs=None):
 
 
 @register_impl("aten.t.default")
-def dist_t(types, args=(), kwargs=None):
+def dist_t(self: Tensor) -> Tensor:
     # transpose with sharding
-    mat = args[0]
-    local_mat = pytree.tree_map(unwrap_local_tensor, mat)
+    local_mat = pytree.tree_map(unwrap_local_tensor, self)
     assert local_mat.ndim == 2
-    mat_placement = pytree.tree_map(unwrap_single_placement, mat)
+    mat_placement = pytree.tree_map(unwrap_single_placement, self)
     transposed_local_mat = local_mat.t()
-    device_mesh = mat.device_mesh
+    device_mesh = self.device_mesh
 
     new_shard_dim = 1 if is_shard_on_dim(mat_placement, 0) else 0
     return Tensor.from_local(transposed_local_mat, device_mesh, [Shard(new_shard_dim)])

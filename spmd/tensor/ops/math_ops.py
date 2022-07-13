@@ -7,22 +7,21 @@ from spmd.tensor.placement_types import Shard, Replicate, _Partial
 from spmd.tensor.ops.utils import register_impl
 
 @register_impl("aten.sum.default")
-def dist_sum(types, args=(), kwargs=None):
-    input = args[0]
-    local_input = input.local_tensor()
-    input_placement = input.placements[0]
-    device_mesh = input.device_mesh
+def dist_sum(self: Tensor) -> Tensor:
+    self_local = self.local_tensor()
+    self_placement = self.placements[0]
+    device_mesh = self.device_mesh
 
-    local_sum = local_input.sum()
+    local_sum = self_local.sum()
 
-    if isinstance(input_placement, Shard) or isinstance(input_placement, _Partial):
+    if isinstance(self_placement, Shard) or isinstance(self_placement, _Partial):
         placements = [_Partial(ReduceOp.SUM)]
         # partial reduce
         partial_sum = Tensor.from_local(local_sum, device_mesh, placements)
         # all_reduce across device
         placements[0] = Replicate()
         return partial_sum.redistribute(device_mesh, placements)
-    elif isinstance(input_placement, Replicate):
-        return Tensor.from_local(local_sum, device_mesh=device_mesh, placements=input.placements)
+    elif isinstance(self_placement, Replicate):
+        return Tensor.from_local(local_sum, device_mesh=device_mesh, placements=self.placements)
     else:
         raise RuntimeError("Not supported!")
