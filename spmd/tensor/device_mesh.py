@@ -3,8 +3,6 @@ from torch.distributed.distributed_c10d import (
     get_rank,
     ReduceOp,
     ProcessGroup,
-    ProcessGroupGloo,
-    ProcessGroupNCCL,
     _get_default_group
 )
 
@@ -48,10 +46,11 @@ class DeviceMesh(object):
         self.mesh = torch.Tensor(mesh)
 
         default_pg = _get_default_group()
+        backend_name = default_pg._get_backend_name()
         if device_type == "cpu":
-            assert isinstance(default_pg, ProcessGroupGloo), f"ProcessGroup {type(default_pg)} not supporting CPU!"
+            assert backend_name == "gloo", f"ProcessGroup backend: {backend_name} not supporting CPU!"
         elif device_type == "cuda":
-            assert isinstance(default_pg, ProcessGroupNCCL) or isinstance(default_pg, ProcessGroupGloo)
+            assert backend_name == "gloo" or backend_name == "nccl"
         else:
             raise RuntimeError(f"DeviceMesh only support cpu or cuda device type, but got {device_type}")
 
