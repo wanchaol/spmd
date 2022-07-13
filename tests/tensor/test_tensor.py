@@ -33,9 +33,9 @@ class DistTensorTest(DistTensorTestBase):
 
     @with_comms
     def test_tensor_from_local(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
-        local_tensor = torch.randn(3, 3, device="cuda")
+        local_tensor = torch.randn(3, 3)
         sharded_tensor = Tensor.from_local(local_tensor, device_mesh, shard_spec)
         self.assertEqual(sharded_tensor.size(), torch.Size([12, 3]))
 
@@ -50,11 +50,11 @@ class DistTensorTest(DistTensorTestBase):
     @with_comms
     def test_tensor_redistribute(self):
         # test sharding a tensor, then get the global tensor
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_dim = 0
         shard_spec = [Shard(shard_dim)]
         replica_spec = [Replicate()]
-        expected_tensor = torch.randn(12, 3, device="cuda")
+        expected_tensor = torch.randn(12, 3)
         chunked_list = expected_tensor.chunk(self.world_size, shard_dim)
         # make local tensor as the element of the corresponding chunked list
         local_tensor = chunked_list[self.rank]
@@ -77,9 +77,9 @@ class DistTensorTest(DistTensorTestBase):
 
     @with_comms
     def test_placement_spec_read_only_after_set(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
-        local_tensor = torch.randn(3, 3, device="cuda")
+        local_tensor = torch.randn(3, 3)
         sharded_tensor = Tensor.from_local(local_tensor, device_mesh, shard_spec)
 
         # modify shard_spec, and dist_tensor's spec should not be changed
@@ -89,9 +89,9 @@ class DistTensorTest(DistTensorTestBase):
 
     @with_comms
     def test_tensor_properties(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
-        local_tensor = torch.randn(3, 3, device="cuda")
+        local_tensor = torch.randn(3, 3)
         sharded_tensor = Tensor.from_local(local_tensor, device_mesh, shard_spec)
         print(sharded_tensor.device)
 
@@ -100,15 +100,15 @@ class DeviceMeshTest(DistTensorTestBase):
     @with_comms
     def test_device_mesh_basics(self):
         # construct a cuda device mesh
-        mesh = DeviceMesh("cuda", [1, 2, 3, 4])
+        mesh = DeviceMesh(self.device_type, [1, 2, 3, 4])
 
         # construct from a cpu local tensor with cuda device mesh
         # should automatically convert the dist tensor to cuda
         shard_spec = [Shard(0)]
-        local_tensor = torch.randn(3, 3, device="cpu")
+        local_tensor = torch.randn(3, 3)
         dist_tensor = Tensor.from_local(local_tensor, mesh, shard_spec)
-        self.assertEqual(dist_tensor.device.type, "cuda")
-        self.assertEqual(dist_tensor.local_tensor().device.type, "cuda")
+        self.assertEqual(dist_tensor.device.type, self.device_type)
+        self.assertEqual(dist_tensor.local_tensor().device.type, self.device_type)
 
         # only support 1d mesh as of now
         with self.assertRaisesRegex(
@@ -119,14 +119,14 @@ class DeviceMeshTest(DistTensorTestBase):
 
     @with_comms
     def test_device_mesh_context_manager(self):
-        with DeviceMesh("cuda", list(range(self.world_size))) as mesh:
+        with DeviceMesh(self.device_type, list(range(self.world_size))) as mesh:
             shard_spec = [Shard(0)]
-            local_tensor = torch.randn(3, 3, device="cuda")
+            local_tensor = torch.randn(3, 3)
             sharded_tensor = Tensor.from_local(local_tensor, device_mesh=mesh, placements=shard_spec)
 
-        with DeviceMesh("cuda", list(range(self.world_size))):
+        with DeviceMesh(self.device_type, list(range(self.world_size))):
             shard_spec = [Shard(0)]
-            local_tensor = torch.randn(3, 3, device="cuda")
+            local_tensor = torch.randn(3, 3)
             sharded_tensor = Tensor.from_local(local_tensor, placements=shard_spec)
             replica_spec = [Replicate()]
             replica_tensor = sharded_tensor.redistribute(placements=replica_spec)

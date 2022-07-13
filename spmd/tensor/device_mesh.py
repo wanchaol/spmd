@@ -3,13 +3,12 @@ from torch.distributed.distributed_c10d import (
     get_rank,
     ReduceOp,
     ProcessGroup,
-    ProcessGroupGloo,
-    ProcessGroupNCCL,
     _get_default_group
 )
 
 # autograd enabled collective
 from torch.distributed.nn.functional import (
+    all_gather,
     _all_gather_base,
     all_reduce,
     broadcast,
@@ -47,10 +46,11 @@ class DeviceMesh(object):
         self.mesh = torch.Tensor(mesh)
 
         default_pg = _get_default_group()
+        backend_name = default_pg._get_backend_name()
         if device_type == "cpu":
-            assert isinstance(default_pg, ProcessGroupGloo), f"ProcessGroup {type(default_pg)} not supporting CPU!"
+            assert backend_name == "gloo", f"ProcessGroup backend: {backend_name} not supporting CPU!"
         elif device_type == "cuda":
-            assert isinstance(default_pg, ProcessGroupNCCL) or isinstance(default_pg, ProcessGroupGloo)
+            assert backend_name == "gloo" or backend_name == "nccl"
         else:
             raise RuntimeError(f"DeviceMesh only support cpu or cuda device type, but got {device_type}")
 
@@ -76,6 +76,9 @@ class DeviceMesh(object):
     def ndim(self):
         return self.mesh.ndim
 
+    def backend(self):
+        return _get_default_group()._get_backend_name()
+
     def get_rank(self):
         return get_rank()
 
@@ -86,11 +89,21 @@ class DeviceMesh(object):
     def broadcast(self, tensor, src=0):
         return broadcast(tensor, src=src)
 
-    # def all_gather(self, tensor_list, tensor):
-    #     return all_gather(tensor_list, tensor)
+    def all_gather(self, tensor):
+        return all_gather(tensor)
 
     def all_gather_base(self, output_tensor, tensor):
-        return _all_gather_base(output_tensor, tensor)
+        # only nccl have all_gather base
+        if self.backend() == "nccl":
+            return _all_gather_base(output_tensor, tensor)
+        else:
+            # if not nccl, fallback to use all_gather
+            # and reform the output tensor
+            gathered_chunks = self.all_gather(tensor)
+            # TODO: find more performant way
+            for chunk in gathered_chunks:
+                output_tensor.copy_(torch.cat(gathered_chunks))
+            return output_tensor
 
     def all_reduce(self, tensor, op=ReduceOp.SUM):
         return all_reduce(tensor, op=op)
