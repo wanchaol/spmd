@@ -28,9 +28,9 @@ class MyModel(nn.Module):
 class DistTensorAPITest(DistTensorTestBase):
     @with_comms
     def test_distribute_tensor(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
-        tensor_to_shard = torch.randn(12, 3, device="cuda")
+        tensor_to_shard = torch.randn(12, 3)
         sharded_tensor = distribute_tensor(tensor_to_shard, device_mesh, shard_spec)
         self.assertEqual(sharded_tensor.size(), torch.Size([12, 3]))
         local_tensor = sharded_tensor.local_tensor()
@@ -38,26 +38,26 @@ class DistTensorAPITest(DistTensorTestBase):
 
     @with_comms
     def test_distribute_module(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
-        module_to_shard = MyModel(20, 20, device="cuda")
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
+        module_to_shard = MyModel(20, 20, device=self.device_type)
         shard_spec = [Shard(0)]
         sharded_module = distribute_module(module_to_shard, device_mesh, shard_spec)
 
-        module_to_replicate = MyModel(20, 20, device="cuda").cuda()
+        module_to_replicate = MyModel(20, 20, device=self.device_type)
         replica_spec = [Replicate()]
         replica_module = distribute_module(module_to_replicate, device_mesh, replica_spec)
 
 class DDPWithDistTensorAPITest(DistTensorTestBase):
     @with_comms
     def test_full_replicated(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         n_features = 10
-        model = MyModel(n_features, n_features, device="cuda")
+        model = MyModel(n_features, n_features, device=self.device_type)
         # mark model as replication
         replica_spec = [Replicate()]
         replicated_model = distribute_module(model, device_mesh, replica_spec)
 
-        input = torch.randn(10, n_features, device="cuda", requires_grad=True)
+        input = torch.randn(10, n_features, requires_grad=True)
         # mark input as replicated
         replicated_input = Tensor.from_local(input, device_mesh, replica_spec)
 
@@ -69,16 +69,16 @@ class DDPWithDistTensorAPITest(DistTensorTestBase):
 
     @with_comms
     def test_ddp_dist_tensor(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         n_features = 100
-        model = MyModel(n_features, 1, device="cuda")
+        model = MyModel(n_features, 1, device=self.device_type)
         # model = MyModel(20, 20, device="meta")
         # mark model as replication
         replica_spec = [Replicate()]
         replicated_model = distribute_module(model, device_mesh, replica_spec)
 
         shard0_spec = [Shard(0)]
-        input = torch.randn(10, n_features, device="cuda")
+        input = torch.randn(10, n_features)
         # mark input as shard on dim 0
         sharded_input = Tensor.from_local(input, device_mesh, shard0_spec)
 
@@ -90,15 +90,15 @@ class DDPWithDistTensorAPITest(DistTensorTestBase):
 class DistTensorOpsTest(DistTensorTestBase):
     @with_comms
     def test_addmm(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 
-        tensor_to_shard = torch.randn(12, 8, device="cuda")
+        tensor_to_shard = torch.randn(12, 8)
         mat1 = distribute_tensor(tensor_to_shard, device_mesh, shard_spec)
-        tensor_to_replicate = torch.randn(8, 4, device="cuda")
+        tensor_to_replicate = torch.randn(8, 4)
         mat2 = distribute_tensor(tensor_to_replicate, device_mesh, replica_spec)
-        input_tensor = torch.randn(4, device="cuda")
+        input_tensor = torch.randn(4)
         input = distribute_tensor(input_tensor, device_mesh, replica_spec)
 
         dist_res = torch.addmm(input, mat1, mat2)
@@ -107,19 +107,19 @@ class DistTensorOpsTest(DistTensorTestBase):
 
     @with_comms
     def test_mm(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 
-        tensor_to_shard = torch.randn(12, 8, device="cuda", requires_grad=True)
+        tensor_to_shard = torch.randn(12, 8, requires_grad=True)
         mat1 = distribute_tensor(tensor_to_shard, device_mesh, shard_spec)
-        tensor_to_replicate = torch.randn(8, 16, device="cuda", requires_grad=True)
+        tensor_to_replicate = torch.randn(8, 16, requires_grad=True)
         mat2 = distribute_tensor(tensor_to_replicate, device_mesh, replica_spec)
 
         dist_res = torch.mm(mat1, mat2)
         # local_res = torch.mm(tensor_to_shard, tensor_to_replicate)
         # self.assertEqual(dist_res.redistribute(device_mesh, replica_spec).local_tensor(), local_res)
-        grad_res = torch.ones(12, 16, device="cuda")
+        grad_res = torch.ones(12, 16)
         grad_dist_res = distribute_tensor(grad_res, device_mesh, shard_spec)
         dist_res.backward(grad_dist_res)
         print(mat1.grad)
@@ -127,22 +127,22 @@ class DistTensorOpsTest(DistTensorTestBase):
 
     @with_comms
     def test_sum(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 
-        tensor_to_shard = torch.randn(12, 8, device="cuda", requires_grad=True)
+        tensor_to_shard = torch.randn(12, 8, requires_grad=True)
         mat1 = distribute_tensor(tensor_to_shard, device_mesh, shard_spec)
         mat1.sum()
-        tensor_to_replicate = torch.randn(8, 16, device="cuda", requires_grad=True)
+        tensor_to_replicate = torch.randn(8, 16, requires_grad=True)
 
     @with_comms
     def test_t(self):
-        device_mesh = DeviceMesh("cuda", list(range(self.world_size)))
+        device_mesh = DeviceMesh(self.device_type, list(range(self.world_size)))
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 
-        tensor_to_transpose = torch.randn(12, 8, device="cuda", requires_grad=True)
+        tensor_to_transpose = torch.randn(12, 8, requires_grad=True)
         mat = distribute_tensor(tensor_to_transpose, device_mesh, shard_spec)
         tranposed_mat = mat.t()
         self.assertEqual(tranposed_mat.size(), torch.Size([8, 12]))

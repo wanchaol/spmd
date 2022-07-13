@@ -10,6 +10,7 @@ from torch.distributed.distributed_c10d import (
 
 # autograd enabled collective
 from torch.distributed.nn.functional import (
+    all_gather,
     _all_gather_base,
     all_reduce,
     broadcast,
@@ -76,6 +77,9 @@ class DeviceMesh(object):
     def ndim(self):
         return self.mesh.ndim
 
+    def backend(self):
+        return _get_default_group()._get_backend_name()
+
     def get_rank(self):
         return get_rank()
 
@@ -86,11 +90,21 @@ class DeviceMesh(object):
     def broadcast(self, tensor, src=0):
         return broadcast(tensor, src=src)
 
-    # def all_gather(self, tensor_list, tensor):
-    #     return all_gather(tensor_list, tensor)
+    def all_gather(self, tensor):
+        return all_gather(tensor)
 
     def all_gather_base(self, output_tensor, tensor):
-        return _all_gather_base(output_tensor, tensor)
+        # only nccl have all_gather base
+        if self.backend() == "nccl":
+            return _all_gather_base(output_tensor, tensor)
+        else:
+            # if not nccl, fallback to use all_gather
+            # and reform the output tensor
+            gathered_chunks = self.all_gather(tensor)
+            # TODO: find more performant way
+            for chunk in gathered_chunks:
+                output_tensor.copy_(torch.cat(gathered_chunks))
+            return output_tensor
 
     def all_reduce(self, tensor, op=ReduceOp.SUM):
         return all_reduce(tensor, op=op)
