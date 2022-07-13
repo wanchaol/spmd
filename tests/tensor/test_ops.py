@@ -58,11 +58,11 @@ class DistTensorOpsTest(DistTensorTestBase):
         shard_spec = [Shard(0)]
         replica_spec = [Replicate()]
 
-        tensor_to_sum = torch.randn(12, 8, requires_grad=True)
+        tensor_to_sum = torch.randn(12, 8)
         sumed_tensor = tensor_to_sum.sum()
         mat1 = distribute_tensor(tensor_to_sum, device_mesh, shard_spec)
         dt_sum = mat1.sum()
-        self.assertEqual(dt_sum, tensor_to_sum.sum())
+        self.assertEqual(dt_sum.local_tensor(), sumed_tensor)
 
     @with_comms
     def test_t(self):
