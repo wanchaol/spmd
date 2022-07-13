@@ -2,9 +2,9 @@ import torch
 from torch.distributed.distributed_c10d import (
     ReduceOp
 )
-from distributed.tensor.api import Tensor
-from distributed.tensor.placement_types import Shard, Replicate, _Partial
-from distributed.tensor.ops.utils import register_impl
+from spmd.tensor.api import Tensor
+from spmd.tensor.placement_types import Shard, Replicate, _Partial
+from spmd.tensor.ops.utils import register_impl
 
 @register_impl("aten.sum.default")
 def dist_sum(types, args=(), kwargs=None):

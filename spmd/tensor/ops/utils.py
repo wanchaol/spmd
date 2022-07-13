@@ -1,5 +1,5 @@
-from distributed.tensor.api import Tensor
-from distributed.tensor.placement_types import Shard
+from spmd.tensor.api import Tensor
+from spmd.tensor.placement_types import Shard
 
 def unwrap_single_placement(e):
     if not isinstance(e, Tensor):

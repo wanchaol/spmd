@@ -2,17 +2,17 @@ import copy
 import torch
 from torch.utils._pytree import tree_map
 from typing import Dict, List, Callable
-from distributed.tensor.device_mesh import (
+from spmd.tensor.device_mesh import (
     get_global_device_mesh,
     DeviceMesh
 )
-from distributed.tensor.placement_types import (
+from spmd.tensor.placement_types import (
     Placement,
     Shard,
     Replicate,
     _Partial
 )
-from distributed.tensor.utils import all_equal
+from spmd.tensor.utils import all_equal
 
 
 class Tensor(torch.Tensor):
@@ -59,6 +59,7 @@ class Tensor(torch.Tensor):
 
     @classmethod
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
+
         def unwrap_mesh(e):
             # if this tensor is not Distributed, then return none. We will reinterpret it as replicated
             if not isinstance(e, Tensor):
