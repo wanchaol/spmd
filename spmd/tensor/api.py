@@ -89,7 +89,7 @@ class Tensor(torch.Tensor):
 
         if str(func) in Tensor._dist_tensor_dispatch_ops:
             # dispatch to distributed tensor ops
-            return Tensor._dist_tensor_dispatch_ops[str(func)](types, args, kwargs)
+            return Tensor._dist_tensor_dispatch_ops[str(func)](*args, **kwargs)
         else:
             # default to local tensor ops, this is wrong
             # but we use it now to enable more tensor property access 
@@ -169,9 +169,11 @@ class Tensor(torch.Tensor):
             replica_tensor._placements[0] = Replicate()
             return replica_tensor
         elif isinstance(current_placements[0], _Partial) and isinstance(placements[0], Replicate):
-            device_mesh.all_reduce(self._local_tensor, current_placements[0].reduce_op)
-            self._placements[0] = Replicate()
-            return self
+            reduced_tensor = device_mesh.all_reduce(self._local_tensor, current_placements[0].reduce_op)
+            replica_tensor = Tensor.from_local(reduced_tensor, device_mesh, current_placements)
+            # change placement to replicate
+            replica_tensor._placements[0] = Replicate()
+            return replica_tensor
         elif current_placements == placements:
             return self
         else:
